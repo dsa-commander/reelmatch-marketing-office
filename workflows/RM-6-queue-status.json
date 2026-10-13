@@ -1,0 +1,120 @@
+{
+  "updatedAt": "2026-10-13T09:05:24.000Z",
+  "createdAt": "2026-09-24T15:28:16.107Z",
+  "id": "RMQSTATUS000001",
+  "name": "[RMMKT] RM \u00b7 6 Queue status (read-only)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 6 \u2014 read-only status\n\n**Starts:** webhook (`rm-queue-status`).\n\nAnswers \"what posts next, and when\" straight from the `content_queue` table. The gateway calls it for\nthe Telegram `/queue` command and for status questions in chat.\n\n**Read-only by design** \u2014 it has no write node, so a mistake here cannot change the queue.",
+        "height": 260,
+        "width": 460,
+        "color": 3
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "rm-queue-status",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "hook",
+      "name": "webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YVlyPqsZqjrHWDEV",
+          "mode": "list",
+          "cachedResultName": "content_queue"
+        },
+        "options": {}
+      },
+      "id": "get",
+      "name": "content_queue: get",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# Just the Instagram queue, soonest first \u2014 the gateway answers \"what's next on Instagram?\" from this.\nrows = [i[\"json\"] for i in _items]\nq = [r for r in rows if r.get(\"status\") == \"ready_to_post\"]\nq.sort(key=lambda r: str(r.get(\"scheduled_date\") or \"\"))\nout = [{\"title\": r.get(\"title_a\"), \"scheduled_date\": str(r.get(\"scheduled_date\") or \"\")[:10],\n        \"caption\": (r.get(\"caption\") or \"\")[:300], \"card_url\": r.get(\"card_url\"),\n        \"row_id\": r.get(\"row_id\")} for r in q]\nposted = [r for r in rows if r.get(\"status\") == \"posted\" and r.get(\"processed_at\")]\nposted.sort(key=lambda r: str(r.get(\"processed_at\") or \"\"), reverse=True)\nreturn [{\"json\": {\"queued\": out, \"queued_count\": len(out),\n                  \"last_posted\": ({\"title\": posted[0].get(\"title_a\"),\n                                   \"at\": str(posted[0].get(\"processed_at\"))[:19]} if posted else None)}}]"
+      },
+      "id": "shape",
+      "name": "Shape the answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "webhook": {
+      "main": [
+        [
+          {
+            "node": "content_queue: get",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "content_queue: get": {
+      "main": [
+        [
+          {
+            "node": "Shape the answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "44e70916-0074-421f-b84a-37ec97100949",
+  "activeVersionId": "44e70916-0074-421f-b84a-37ec97100949",
+  "versionCounter": 4,
+  "triggerCount": 1,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

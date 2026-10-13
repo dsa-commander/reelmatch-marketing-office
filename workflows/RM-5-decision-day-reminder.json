@@ -1,0 +1,177 @@
+{
+  "updatedAt": "2026-10-13T09:05:22.000Z",
+  "createdAt": "2026-09-22T17:36:16.512Z",
+  "id": "RMREMIND0000001",
+  "name": "[RMMKT] RM \u00b7 5 Decision-day reminder",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 5 \u2014 the nudge\n\n**Starts:** Mon/Wed/Fri 08:05, or *Run on demand*.\n\nCards are only sent on decision days, so anything produced in between is held. This flushes the held\nones and re-sends whatever is still undecided, with its age.\n\nWithout it an item that missed its slot would sit in the draft forever and silently never publish.",
+        "height": 260,
+        "width": 460,
+        "color": 3
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -40
+      ]
+    },
+    {
+      "id": "cron",
+      "name": "Mon/Wed/Fri 08:05",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 8 * * 1,3,5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "manual",
+      "name": "Run on demand",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        180
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "flush",
+      "name": "Gateway: flush held cards",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        80
+      ],
+      "parameters": {
+        "url": "http://host.docker.internal:8787/telegram/flush",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "remind",
+      "name": "Gateway: remind about pending",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        80
+      ],
+      "parameters": {
+        "url": "http://host.docker.internal:8787/telegram/remind",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Mon/Wed/Fri 08:05": {
+      "main": [
+        [
+          {
+            "node": "Gateway: flush held cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run on demand": {
+      "main": [
+        [
+          {
+            "node": "Gateway: flush held cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: flush held cards": {
+      "main": [
+        [
+          {
+            "node": "Gateway: remind about pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "node:Mon/Wed/Fri 08:05": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "1aa4f96e-654e-47c2-9070-a6cacaeec8fc",
+  "activeVersionId": "1aa4f96e-654e-47c2-9070-a6cacaeec8fc",
+  "versionCounter": 5,
+  "triggerCount": 1,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

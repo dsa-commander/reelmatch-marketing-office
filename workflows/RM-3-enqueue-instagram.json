@@ -1,0 +1,374 @@
+{
+  "updatedAt": "2026-10-13T12:27:50.000Z",
+  "createdAt": "2026-09-21T13:05:42.233Z",
+  "id": "2EWLjDwGSHy3KEER",
+  "name": "[RMMKT] RM \u00b7 3 Enqueue Instagram post",
+  "description": "",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 3 \u2014 approved caption \u2192 Instagram queue\n\n**Starts:** webhook, called by the gateway when a human approves an Instagram item.\n\n**Authorised?** checks the shared token first and refuses anything else \u2014 this webhook can write to\nthe queue, so it is not open.\n\nRenders the branded card via **RM: Render Card** (a sub-workflow), then upserts a row into the\n`content_queue` data table. It does **not** post: *RM: Publish ready posts* does that on its own\nschedule, one post a day.",
+        "height": 260,
+        "width": 460,
+        "color": 4
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rm-enqueue-instagram",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "hook",
+      "name": "Webhook: gateway \u2192 enqueue",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "rm-enqueue-instagram",
+      "notes": "Called by the gateway's /publish when a human approves an instagram item. Body: {token, tmdb_id, caption, scheduled_date, item_id, run_date}"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "token",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.body.token }}",
+              "rightValue": "={{ $env.RM_GATEWAY_TOKEN }}"
+            },
+            {
+              "id": "tmdb",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "leftValue": "={{ String($json.body.tmdb_id ?? '') }}",
+              "rightValue": ""
+            },
+            {
+              "id": "cap",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.body.caption }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "auth",
+      "name": "Authorised?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "bad token, or tmdb_id/caption missing \u2014 nothing was queued"
+      },
+      "id": "refuse",
+      "name": "Refuse",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        224,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"tmdb_id\": \"{{ $json.body.tmdb_id }}\",\n  \"caption\": {{ JSON.stringify($json.body.caption) }},\n  \"scheduled_date\": \"{{ $json.body.scheduled_date || $now.toFormat('yyyy-MM-dd') }}\",\n  \"item_id\": \"{{ $json.body.item_id || '' }}\",\n  \"run_date\": \"{{ $json.body.run_date || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "norm",
+      "name": "Normalise request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "jAv1cptzC2Y8rYQA",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "passThrough"
+        },
+        "options": {}
+      },
+      "id": "render",
+      "name": "RM: Render Card",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        0
+      ],
+      "notes": "Reuses the existing branded 1080\u00d71350 card renderer (TMDB \u2192 HTML \u2192 hcti.io \u2192 public URL). Input: tmdb_id. Output: image_url, title."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "img",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.image_url }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "rendered",
+      "name": "Card rendered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "RM: Render Card returned no image_url \u2014 nothing was queued"
+      },
+      "id": "nocard",
+      "name": "No card",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        880,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"row_id\": \"rm-{{ $('Normalise request').first().json.run_date }}-{{ $('Normalise request').first().json.item_id || 'tmdb-' + $('Normalise request').first().json.tmdb_id }}\",\n  \"platform\": \"instagram\",\n  \"status\": \"ready_to_post\",\n  \"caption\": {{ JSON.stringify($('Normalise request').first().json.caption) }},\n  \"card_url\": {{ JSON.stringify($json.image_url) }},\n  \"scheduled_date\": \"{{ $('Normalise request').first().json.scheduled_date }}\",\n  \"tmdb_id_a\": \"{{ $('Normalise request').first().json.tmdb_id }}\",\n  \"title_a\": {{ JSON.stringify($json.title || '') }},\n  \"tmdb_id_b\": \"\",\n  \"title_b\": \"\",\n  \"warnings\": \"from ReelMatch Marketing Office (guardian-approved, human-approved)\",\n  \"last_error\": \"\",\n  \"processed_at\": \"\"\n}",
+        "options": {}
+      },
+      "id": "row",
+      "name": "Queue row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1104,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YVlyPqsZqjrHWDEV",
+          "mode": "list",
+          "cachedResultName": "content_queue"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "row_id",
+              "keyValue": "={{ $json.row_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "upsert",
+      "name": "content_queue: upsert",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"ok\": true,\n  \"row_id\": \"{{ $('Queue row').first().json.row_id }}\",\n  \"card_url\": {{ JSON.stringify($('Queue row').first().json.card_url) }},\n  \"scheduled_date\": \"{{ $('Queue row').first().json.scheduled_date }}\",\n  \"message\": \"queued \u2014 RM: Publish ready posts to Instagram will post it on its next Mon/Wed/Sat 08:00 run\"\n}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1552,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook: gateway \u2192 enqueue": {
+      "main": [
+        [
+          {
+            "node": "Authorised?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorised?": {
+      "main": [
+        [
+          {
+            "node": "Normalise request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Refuse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalise request": {
+      "main": [
+        [
+          {
+            "node": "RM: Render Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RM: Render Card": {
+      "main": [
+        [
+          {
+            "node": "Card rendered?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Card rendered?": {
+      "main": [
+        [
+          {
+            "node": "Queue row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue row": {
+      "main": [
+        [
+          {
+            "node": "content_queue: upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "content_queue: upsert": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "683IFHjoY7k7ZHKH",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "c4248041-ae0b-4e05-ad22-1096d6f2d97c",
+  "activeVersionId": "c4248041-ae0b-4e05-ad22-1096d6f2d97c",
+  "versionCounter": 6,
+  "triggerCount": 1,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

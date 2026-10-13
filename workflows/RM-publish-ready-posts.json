@@ -1,0 +1,481 @@
+{
+  "updatedAt": "2026-10-13T12:27:53.000Z",
+  "createdAt": "2026-09-03T11:28:10.819Z",
+  "id": "0bRWFX4Yy7YrffyT",
+  "name": "[RMMKT] RM: Publish ready posts to Instagram",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM: Publish ready posts to Instagram\n\n**Starts:** daily 08:00.\n\nTakes the **oldest** `ready_to_post` row from `content_queue`, posts it, and marks the row. One post a\nday, never a backlog dump.\n\nInstagram's API is two steps: create a media container, wait for it to finish, then publish it. The\nwait is not optional \u2014 publishing too early fails.\n\nA failed post marks the row rather than losing it, so it can be retried deliberately.",
+        "height": 286,
+        "width": 460,
+        "color": 4
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2104,
+        616
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "5b837507-5f56-4d25-ad01-faeb0606861e",
+      "name": "Daily 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1584,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "sortFieldsUi": {
+          "sortField": [
+            {
+              "fieldName": "scheduled_date"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c8b2014f-7af6-4ce1-9c55-65a0513254d3",
+      "name": "Oldest slot first",
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [
+        -864,
+        736
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "90b9e619-692e-4bee-8dcd-bc6b8db9879b",
+      "name": "Limit to one post",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YVlyPqsZqjrHWDEV",
+          "mode": "list",
+          "cachedResultName": "content_queue",
+          "cachedResultUrl": "/projects/6XDYaBc0guGEUeMo/datatables/YVlyPqsZqjrHWDEV"
+        },
+        "returnAll": true
+      },
+      "id": "972d42dd-4450-41ae-812e-e1cdd46f62bb",
+      "name": "Get row(s)1",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -1344,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ea819559-4180-5f3f-a967-5e44f1e6b72d",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ready_to_post",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "9af929a5-7c5c-50eb-968d-1c323e34380c",
+              "leftValue": "={{ $json.card_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "f5dcc50b-30a6-5d8a-8a81-8797cb7b744a",
+              "leftValue": "={{ $json.caption }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "10e0b617-758c-5ebf-92cf-69358a1a855c",
+              "leftValue": "={{ $json.scheduled_date <= $now.toFormat('yyyy-MM-dd') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "066f4f67-7ee0-4adf-9616-1ed11707adf4",
+      "name": "Ready to post?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1104,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/17841478416834267/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "image_url",
+              "value": "={{ $json.card_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "52e87a1c-9a1a-45de-ad4f-b23bfe152071",
+      "name": "IG: create media container1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -384,
+        736
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q7bgoLbLuLzMpOJf",
+          "name": "Instagram Facebook Token"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "amount": 8
+      },
+      "id": "9b74b9bf-4ea1-4317-bc52-861fe12df0d0",
+      "name": "Wait for container1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -144,
+        736
+      ],
+      "webhookId": "3dc3cb3f-658d-53fa-add5-491dd555a771"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/17841478416834267/media_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4a9518e9-1f84-43f0-924a-7852d0e0bd7c",
+      "name": "IG: publish1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        96,
+        736
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q7bgoLbLuLzMpOJf",
+          "name": "Instagram Facebook Token"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Published. Record it so the row is never picked up again.\nreturn $input.all().map((item, i) => {\n  let src;\n  try { src = $('Limit to one post').itemMatching(i).json; }\n  catch (e) { src = $('Limit to one post').all()[i]?.json ?? {}; }\n  return { json: {\n    row_id: src.row_id ?? '',\n    status: 'posted',\n    last_error: '',\n    processed_at: new Date().toISOString(),\n  } };\n});\n"
+      },
+      "id": "cc7b031e-e922-4c80-a4c0-55416ead78f2",
+      "name": "Mark posted1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Publishing failed - mark the row rather than losing it.\nreturn $input.all().map((item, i) => {\n  const j = item.json ?? {};\n  let src;\n  try { src = $('Limit to one post').itemMatching(i).json; }\n  catch (e) { src = $('Limit to one post').all()[i]?.json ?? {}; }\n  const msg = typeof j.error === 'string' ? j.error : (j.error?.message ?? JSON.stringify(j).slice(0, 300));\n  return { json: {\n    row_id: src.row_id ?? '',\n    status: 'needs_review',\n    last_error: `instagram publish failed: ${msg}`.slice(0, 500),\n    processed_at: new Date().toISOString(),\n  } };\n});\n"
+      },
+      "id": "d14e7d6a-94bf-4ce1-8532-cf7e2e244b8f",
+      "name": "Mark failed1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YVlyPqsZqjrHWDEV",
+          "mode": "list",
+          "cachedResultName": "content_queue",
+          "cachedResultUrl": "/projects/6XDYaBc0guGEUeMo/datatables/YVlyPqsZqjrHWDEV"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "row_id",
+              "keyValue": "={{ $json.row_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "f54a6784-4e30-437c-9af5-5211a1dd0f1a",
+      "name": "Update row(s)1",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        608,
+        816
+      ]
+    }
+  ],
+  "connections": {
+    "Oldest slot first": {
+      "main": [
+        [
+          {
+            "node": "Limit to one post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit to one post": {
+      "main": [
+        [
+          {
+            "node": "IG: create media container1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)1": {
+      "main": [
+        [
+          {
+            "node": "Ready to post?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ready to post?1": {
+      "main": [
+        [
+          {
+            "node": "Oldest slot first",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: create media container1": {
+      "main": [
+        [
+          {
+            "node": "Wait for container1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark failed1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for container1": {
+      "main": [
+        [
+          {
+            "node": "IG: publish1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: publish1": {
+      "main": [
+        [
+          {
+            "node": "Mark posted1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark failed1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark posted1": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark failed1": {
+      "main": [
+        [
+          {
+            "node": "Update row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 08:00": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "errorWorkflow": "683IFHjoY7k7ZHKH"
+  },
+  "staticData": {
+    "node:Mon/Wed/Sat 08:00": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    },
+    "node:Daily 08:00": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "8aec08bd-b3dd-4ca4-afa7-5e705c700dd6",
+  "activeVersionId": "8aec08bd-b3dd-4ca4-afa7-5e705c700dd6",
+  "versionCounter": 13,
+  "triggerCount": 1,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

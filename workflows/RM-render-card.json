@@ -1,0 +1,226 @@
+{
+  "updatedAt": "2026-10-13T09:05:28.000Z",
+  "createdAt": "2026-09-03T11:04:13.429Z",
+  "id": "jAv1cptzC2Y8rYQA",
+  "name": "[RMMKT] RM: Render Card",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM: Render Card \u2014 a sub-workflow\n\n**Starts:** called by another workflow (RM \u00b7 3), never on its own.\n\nTMDB details \u2192 branded 1080\u00d71350 HTML \u2192 hcti.io \u2192 a hosted image URL.\n\nKept separate so the Instagram queue and anything else that needs a card share one renderer and one\nlook. Note the carousel path does **not** use this: it renders locally with Playwright, because seven\nslides per post would burn the hcti.io quota.",
+        "height": 260,
+        "width": 460,
+        "color": 3
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "893c733f-3ccd-40b5-84f4-1641263bac7d",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.themoviedb.org/3/movie/{{ $json.tmdb_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "append_to_response",
+              "value": "credits"
+            },
+            {
+              "name": "language",
+              "value": "en-US"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6bd4eed1-c6db-46aa-8995-8b2f0f44ed80",
+      "name": "TMDB: movie details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Mq6Mrap3XolrxheH",
+          "name": "TMDB"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build card HTML - TMDB movie object in, a complete 1080x1350 document out,\n// ready to POST to hcti.io.\n//\n// This is the n8n port of the Make CSStoImage template. All of Make's inline\n// helpers (join/map/slice/if/formatDate/floor) become plain JS here, which is\n// why the conditionals are readable instead of nested one-liners.\n\nconst esc = (v) =>\n  String(v ?? '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;');\n\nconst releaseDate = (iso) => {\n  if (!iso) return '';\n  const d = new Date(iso);\n  if (isNaN(d.getTime())) return '';\n  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });\n};\n\nconst runtime = (mins) => {\n  if (!mins || mins <= 0) return '';\n  return `${Math.floor(mins / 60)}h ${mins % 60}m`;\n};\n\nconst buildHtml = (m) => {\n  const genres = (m.genres ?? []).slice(0, 3).map((g) => `<div class='pill'>${esc(g.name)}</div>`).join('');\n  const cast = (m.credits?.cast ?? []).slice(0, 3).map((c) => c.name).join(', ');\n\n  // Only show a rating once enough people have voted - a 10/10 from four\n  // voters is worse than no rating at all.\n  const rating =\n    (m.vote_count ?? 0) >= 50 && m.vote_average\n      ? `<span class=\"star\">&#9733;</span><span>${m.vote_average.toFixed(1)}/10</span><span class=\"dot\">&middot;</span>`\n      : '';\n\n  const date = releaseDate(m.release_date);\n  const time = runtime(m.runtime);\n  const timePart = time ? `<span class=\"dot\">&middot;</span><span>${time}</span>` : '';\n\n  // Some films have no backdrop. Fall back to a gradient rather than a blank box.\n  const art = m.backdrop_path\n    // 'original' rather than w1280: at device_scale 2 the card is 2160px wide,\n    // and a 1280px backdrop stretched over that is visibly soft.\n    ? `background-image:url('https://image.tmdb.org/t/p/original${esc(m.backdrop_path)}')`\n    : 'background-image:linear-gradient(135deg,#1c1c22 0%,#2a2a33 50%,#141418 100%)';\n\n  return `<!doctype html><html><head><meta charset=\"utf-8\"><style>\n  *{margin:0;padding:0;box-sizing:border-box}\n  html,body{width:1080px;height:1350px}\n  body{background:#0B0B0D;font-family:\"Helvetica Neue\",Arial,sans-serif;\n       color:#fff;position:relative;overflow:hidden}\n  .art{position:absolute;inset:0 0 auto 0;height:1000px;\n       ${art};background-size:cover;background-position:center}\n  .fade{position:absolute;inset:0;\n        background:linear-gradient(180deg,\n          rgba(11,11,13,.62) 0%, rgba(11,11,13,.18) 22%,\n          rgba(11,11,13,.05) 32%, rgba(11,11,13,.82) 55%, #0B0B0D 68%)}\n  .body{position:absolute;left:76px;right:76px;bottom:88px}\n  .pills{display:flex;gap:16px;margin-bottom:30px}\n  .pill{border:3px solid #F5C518;color:#F5C518;border-radius:999px;\n        padding:11px 26px;font-size:25px;font-weight:800;letter-spacing:.13em}\n  .title{font-size:82px;font-weight:800;letter-spacing:-.025em;\n         line-height:1.02;margin-bottom:26px}\n  .meta{display:flex;align-items:center;gap:18px;font-size:31px;\n        font-weight:700;margin-bottom:32px;color:#EDEDF0}\n  .meta .star{color:#F5C518}\n  .dot{color:#5A5A62;font-weight:400}\n  .overview{font-size:30px;line-height:1.42;color:#A6A6AE;margin-bottom:36px;\n            display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;\n            overflow:hidden}\n  .row{display:flex;align-items:flex-start;gap:22px;margin-bottom:24px;\n       font-size:28px;line-height:1.32}\n  .row:last-child{margin-bottom:0}\n  .ico{flex:0 0 42px;width:42px;height:42px;margin-top:2px}\n  .row .lbl{color:#A6A6AE}\n  .row b{color:#fff;font-weight:700}\n  .mark{position:absolute;right:76px;top:70px;color:#F5C518;\n        font-size:34px;font-weight:800;letter-spacing:-.02em;text-align:right;\n        text-shadow:0 2px 16px rgba(0,0,0,.75)}\n  .mark span{display:block;font-size:20px;font-weight:700;\n             letter-spacing:.14em;color:rgba(255,255,255,.78);margin-top:6px}\n</style></head><body>\n  <div class=\"art\"></div><div class=\"fade\"></div>\n  <div class=\"body\">\n    <div class=\"pills\">${genres}</div>\n    <div class=\"title\">${esc(m.title)}</div>\n    <div class=\"meta\">${rating}<span>${esc(date)}</span>${timePart}</div>\n    <div class=\"overview\">${esc(m.overview)}</div>\n    <div class=\"row\">\n      <svg class=\"ico\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#F5C518\"\nstroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">\n        <path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"/>\n        <circle cx=\"12\" cy=\"7\" r=\"4\"/></svg>\n      <div class=\"lbl\">Starring <b>${esc(cast)}</b></div></div>\n    <div class=\"row\">\n      <svg class=\"ico\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#F5C518\"\nstroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">\n        <polyline points=\"23 6 13.5 15.5 8.5 10.5 1 18\"/>\n        <polyline points=\"17 6 23 6 23 12\"/></svg>\n      <div class=\"lbl\"><b>Trending this week</b></div></div>\n  </div>\n  <div class=\"mark\">ReelMatch<span>SWIPE &middot; MATCH &middot; WATCH</span></div>\n</body></html>`;\n};\n\n// n8n entry point. Guarded so this file can also be require()d by preview-card.js.\nif (typeof $input !== 'undefined') {\n  return $input.all().map((item) => {\n    const m = item.json;\n    if (!m?.title) {\n      throw new Error(`No TMDB movie data on item - got keys: ${Object.keys(m ?? {}).join(', ')}`);\n    }\n    return { json: { tmdb_id: m.id, title: m.title, html: buildHtml(m) } };\n  });\n}\n"
+      },
+      "id": "95865fa5-1db9-4acb-9441-e061b385464c",
+      "name": "Build card HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hcti.io/v1/image",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "html",
+              "value": "={{ $json.html }}"
+            },
+            {
+              "name": "viewport_width",
+              "value": "1080"
+            },
+            {
+              "name": "viewport_height",
+              "value": "1350"
+            },
+            {
+              "name": "device_scale",
+              "value": "3"
+            },
+            {
+              "name": "selector",
+              "value": "body"
+            },
+            {
+              "name": "ms_delay",
+              "value": "1500"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a70d2f8f-357c-43ae-8583-8a7ce1be4ada",
+      "name": "hcti.io: render",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "nc4KYwMvajeezW1D",
+          "name": "HCTI Image Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// One item out per card: the hosted image URL, plus the facts the caption\n// writer needs. The model does not know films released after its training\n// cutoff, so it must be given the synopsis rather than asked to recall it.\nreturn $input.all().map((item, i) => {\n  const url = item.json.url;\n  if (!url) {\n    throw new Error(`hcti.io returned no url: ${JSON.stringify(item.json).slice(0, 300)}`);\n  }\n  const m = $('TMDB: movie details').all()[i]?.json ?? {};\n  return { json: {\n    image_url: url,\n    tmdb_id: m.id,\n    title: m.title,\n    overview: m.overview ?? '',\n    release_date: m.release_date ?? '',\n    runtime: m.runtime ?? null,\n    genres: (m.genres ?? []).map((g) => g.name).join(', '),\n    cast: (m.credits?.cast ?? []).slice(0, 4).map((c) => c.name).join(', '),\n  } };\n});\n\n"
+      },
+      "id": "47c40b01-9b64-438d-a7e5-0d6f286d0e8a",
+      "name": "Return image URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "TMDB: movie details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TMDB: movie details": {
+      "main": [
+        [
+          {
+            "node": "Build card HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build card HTML": {
+      "main": [
+        [
+          {
+            "node": "hcti.io: render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "hcti.io: render": {
+      "main": [
+        [
+          {
+            "node": "Return image URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "c529aba5-329d-4058-b25b-4271073e120f",
+  "activeVersionId": "c529aba5-329d-4058-b25b-4271073e120f",
+  "versionCounter": 25,
+  "triggerCount": 0,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

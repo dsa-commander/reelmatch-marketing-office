@@ -1,0 +1,537 @@
+{
+  "updatedAt": "2026-10-13T14:59:56.000Z",
+  "createdAt": "2026-10-06T17:36:20.074Z",
+  "id": "RMCAROUSEL00001",
+  "name": "[RMMKT] RM \u00b7 9 Publish carousel",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 9 \u2014 Instagram carousels\n\n**Two ways in:**\n- **webhook** `rm-publish-carousel` \u2014 post one now, given `caption` + `slide_urls`\n- **Daily 09:10** \u2014 asks the gateway whether an approved carousel is due today\n\n**Every slide URL must be publicly reachable.** Meta fetches each image at publish time, so localhost\nand private repos fail \u2014 slides are rendered locally and uploaded to Cloudflare R2.\n\n**Claim-then-confirm:** `/carousel/due` marks an item claimed *before* handing it over and only\n`/carousel/done` marks it published, so a crash between the two leaves it unserved rather than served\ntwice. Posting the same carousel twice cannot be undone.\n\nLimits: 2\u201310 slides, images and video may be mixed, and the whole carousel counts as **one** of the\n100 posts allowed per 24h.",
+        "height": 390,
+        "width": 460,
+        "color": 4
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1160,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Publish an Instagram carousel\n\nPOST to the webhook with:\n\n```json\n{\n  \"caption\": \"\u2026\",\n  \"slide_urls\": [\"https://\u2026/01.jpg\", \"\u2026\"]\n}\n```\n\n**Every slide URL must be publicly reachable.** Meta cURLs each one at publish time \u2014 localhost and\nprivate repos fail. Rendered slides come from `social/carousel.py`; they have to be hosted somewhere\npublic first.\n\nLimits (Meta): 2\u201310 children, images and video may be mixed, and the whole carousel counts as ONE of\nthe 100 posts allowed per 24 hours.\n\nThe single-image publisher (`RM: Publish ready posts to Instagram`) is untouched \u2014 this is a sibling,\nnot a rewrite, so a carousel bug can never take the daily queue down with it.",
+        "height": 520,
+        "width": 420
+      },
+      "id": "note",
+      "name": "How this works",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rm-publish-carousel",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "hook",
+      "name": "carousel",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# One output item per slide, so the next HTTP node runs once per child container.\n# Validation lives here rather than in the HTTP node because a 400 from Meta half way through a\n# carousel leaves orphaned containers and no post.\n# the webhook wraps its payload in `body`; the scheduler branch hands it over flat\nbody = _items[0]['json'].get('body') or _items[0]['json']\nurls = body.get('slide_urls') or []\ncaption = body.get('caption') or ''\n\nif isinstance(urls, str):\n    urls = [u.strip() for u in urls.split(',') if u.strip()]\nif len(urls) < 2 or len(urls) > 10:\n    raise ValueError('a carousel needs between 2 and 10 slides, got %d' % len(urls))\nfor u in urls:\n    if not u.startswith('https://'):\n        raise ValueError('every slide must be a public https URL: %s' % u)\n\nreturn [{'json': {'url': u, 'index': i + 1, 'total': len(urls), 'caption': caption}}\n        for i, u in enumerate(urls)]"
+      },
+      "id": "split",
+      "name": "One item per slide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/17841478416834267/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "image_url",
+              "value": "={{ $json.url }}"
+            },
+            {
+              "name": "is_carousel_item",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "child",
+      "name": "IG: child container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q7bgoLbLuLzMpOJf",
+          "name": "Instagram Facebook Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# Collapse the per-slide containers back into one item: the parent needs them as a single\n# comma-separated list, in the order the slides were given.\nids = [i['json'].get('id') for i in _items if i['json'].get('id')]\nif len(ids) != len(_items):\n    raise ValueError('only %d of %d slide containers came back with an id' % (len(ids), len(_items)))\nreturn [{'json': {'children': ','.join(ids), 'count': len(ids)}}]"
+      },
+      "id": "collect",
+      "name": "Collect container ids",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/17841478416834267/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "CAROUSEL"
+            },
+            {
+              "name": "children",
+              "value": "={{ $json.children }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $('One item per slide').first().json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "parent",
+      "name": "IG: carousel container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q7bgoLbLuLzMpOJf",
+          "name": "Instagram Facebook Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 25
+      },
+      "id": "wait",
+      "name": "Let the container finish",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        920,
+        0
+      ],
+      "webhookId": "rm-carousel-wait"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/17841478416834267/media_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $('IG: carousel container').first().json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "publish",
+      "name": "IG: publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q7bgoLbLuLzMpOJf",
+          "name": "Instagram Facebook Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "permalink,media_type,timestamp"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "link",
+      "name": "IG: permalink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Q7bgoLbLuLzMpOJf",
+          "name": "Instagram Facebook Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.RM_TELEGRAM_CHAT_ID }}",
+        "text": "=\ud83d\udcf8 Carousel posted \u2014 {{ $('Collect container ids').first().json.count }} slides\n{{ $json.permalink }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "tg",
+      "name": "Telegram: posted",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1580,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "cron",
+      "name": "Every 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -180,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8787/carousel/due",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "due",
+      "name": "Gateway: anything due?",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        40,
+        260
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.due }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        }
+      },
+      "id": "isdue",
+      "name": "Due today?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8787/carousel/done",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {},
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $('Gateway: anything due?').first().json.id, permalink: $json.permalink }) }}"
+      },
+      "id": "done",
+      "name": "Gateway: mark published",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1580,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "One item per slide": {
+      "main": [
+        [
+          {
+            "node": "IG: child container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: child container": {
+      "main": [
+        [
+          {
+            "node": "Collect container ids",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect container ids": {
+      "main": [
+        [
+          {
+            "node": "IG: carousel container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: carousel container": {
+      "main": [
+        [
+          {
+            "node": "Let the container finish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Let the container finish": {
+      "main": [
+        [
+          {
+            "node": "IG: publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: publish": {
+      "main": [
+        [
+          {
+            "node": "IG: permalink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: permalink": {
+      "main": [
+        [
+          {
+            "node": "Telegram: posted",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gateway: mark published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "carousel": {
+      "main": [
+        [
+          {
+            "node": "One item per slide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: anything due?": {
+      "main": [
+        [
+          {
+            "node": "Due today?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Due today?": {
+      "main": [
+        [
+          {
+            "node": "One item per slide",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Every 15 min": {
+      "main": [
+        [
+          {
+            "node": "Gateway: anything due?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "errorWorkflow": "683IFHjoY7k7ZHKH"
+  },
+  "staticData": {
+    "node:Daily 09:10": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    },
+    "node:Every 15 min": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "1a3bdf00-a4be-41bc-8f2a-ec6ba67c4529",
+  "activeVersionId": "1a3bdf00-a4be-41bc-8f2a-ec6ba67c4529",
+  "versionCounter": 7,
+  "triggerCount": 2,
+  "tags": []
+}

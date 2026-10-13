@@ -1,0 +1,720 @@
+{
+  "updatedAt": "2026-10-13T09:05:17.000Z",
+  "createdAt": "2026-09-18T14:18:41.771Z",
+  "id": "LLmQuD6xcXMFGj3A",
+  "name": "RM \u00b7 2 Approval callback",
+  "description": "",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 2 \u2014 the ears\n\n**Starts:** every 30s, holding a 25-second Telegram long poll open.\n\nRoutes everything that comes back from `/telegram/updates`:\n- **button taps** \u2192 `/decide` \u2192 `/publish`\n- **plain messages** \u2192 `/chat` \u2192 a job for the office (\"create 5 shorts about horror\")\n\n**Only one poll may run at a time.** Telegram kills overlapping `getUpdates` calls with a 409, and\nthat race silently dropped messages for a day. The gateway now single-flights it and reports a 409 as\na skipped poll rather than an error.\n\nCommands starting with `/` never reach here \u2014 the gateway answers those itself, so the console still\nworks when n8n is the thing that is broken.",
+        "height": 364,
+        "width": 460,
+        "color": 4
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -344
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds"
+            }
+          ]
+        }
+      },
+      "id": "poll",
+      "name": "Every 30s (long poll)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8787/telegram/updates?wait=25",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fetch",
+      "name": "Gateway: new button taps",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500,
+      "position": [
+        224,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Transient ECONNREFUSED during a gateway restart is expected; retried 3\u00d7 then skipped. Taps are never lost \u2014 the gateway advances the Telegram offset only on a successful read."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "any",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.count ?? 0 }}",
+              "rightValue": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "any-taps",
+      "name": "Any taps?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "taps",
+        "options": {}
+      },
+      "id": "split",
+      "name": "Split taps",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/decide",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_date: $json.run_date, item_id: $json.item_id, decision: $json.decision, by: $json.by, schedule: !!$json.schedule }) }}",
+        "options": {}
+      },
+      "id": "decide",
+      "name": "Gateway: record decision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "approve"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "was-approved",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/publish",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_date: $json.run_date, item_id: $json.item_id }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 900000
+        }
+      },
+      "id": "publish",
+      "name": "Gateway: publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        944,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# n8n's Python task runner exposes `_items` (this node runs once for all items), NOT the JS\n# helpers: there is no `$('Other Node')`, and the sandbox sets N8N_RUNNERS_STDLIB_ALLOW=\"\" so even\n# `import re` fails with \"Security violations detected\". Both nodes below are therefore written\n# with plain built-ins and read only their own input. See n8n/README.md.\n\n# The gateway answers 200 (published / queued / replied), 403 (no approval or guardian reject),\n# 503 (publishing disabled) or 400. Turn each into one line the human understands.\n# Only result_line is read downstream \u2014 the Telegram nodes pull the rest from \"Split taps\".\n\nr = _items[0][\"json\"]\nbody = r.get(\"body\", r)\nif not isinstance(body, dict):\n    body = {}\ncode = r.get(\"statusCode\", 200)\nupload = body.get(\"youtube_upload\") or {}\n\nif code == 200 and body.get(\"manual\"):\n    line = \"\\u2705 Approved \u2014 \" + str(body.get(\"message\", \"\"))\nelif code == 200 and body.get(\"queued\"):\n    line = (\"\\u2705 Queued for Instagram (\" + str(body.get(\"scheduled_date\", \"\"))\n            + \") \u2014 your Mon/Wed/Sat publisher posts it\")\nelif code == 200 and body.get(\"replied\"):\n    line = \"\\u2705 Reply posted: \" + str(body.get(\"url\", \"\"))\nelif code == 200:\n    when = upload.get(\"scheduledAt\")\n    line = \"\\u2705 \" + (\"Scheduled to go public \" + str(when) if when else \"Uploaded PRIVATE\")\n    if upload.get(\"url\"):\n        line += \" \\u00b7 \" + str(upload[\"url\"])\nelif code == 503:\n    line = (\"\\u2705 Approved \u2014 publishing is disabled on this host \"\n            \"(STUDIO_ALLOW_PUBLISH=false), so nothing was sent to YouTube.\")\nelse:\n    detail = str(body.get(\"detail\") or body)\n    line = \"\\u26a0\\ufe0f Approved but publish failed (\" + str(code) + \"): \" + detail[:200]\n\nreturn [{\"json\": {\"result_line\": line}}]\n"
+      },
+      "id": "explain",
+      "name": "Explain publish result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"result_line\": \"\\u274c Rejected \u2014 not published. Logged in decisions.jsonl.\"\n}",
+        "options": {}
+      },
+      "id": "rejected",
+      "name": "Rejected line",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        944,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $('Split taps').item.json.callback_query_id }}",
+        "additionalFields": {
+          "text": "={{ $json.result_line.slice(0, 190) }}"
+        }
+      },
+      "id": "ack",
+      "name": "Telegram: answer tap",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1424,
+        0
+      ],
+      "webhookId": "d970a0cd-e3bf-4934-90e7-43d1d63be76c",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Split taps').item.json.chat_id }}",
+        "text": "={{ $('Split taps').item.json.original_text }}\n\n{{ $json.result_line }}\nby {{ $('Split taps').item.json.by }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "reply_to_message_id": "={{ $('Split taps').item.json.message_id }}"
+        }
+      },
+      "id": "confirm",
+      "name": "Telegram: confirm in chat",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1664,
+        0
+      ],
+      "webhookId": "9a324a66-8f2c-45b9-9902-b13e9883ef25",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "plan",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.scope }}",
+              "rightValue": "plan"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "isplan",
+      "name": "Whole plan?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "queryId": "={{ $json.callback_query_id }}",
+        "additionalFields": {
+          "text": "={{ ({approve:'Approving the week \u2014 publishing now\u2026',reject:'Rejecting the whole plan\u2026',review:'Sending the cards one by one\u2026'})[$json.plan_action] }}"
+        }
+      },
+      "id": "ackplan",
+      "name": "Telegram: ack plan",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1104,
+        -304
+      ],
+      "webhookId": "71e52171-998f-46fc-ac54-7ac204a44de9",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/plan/decide",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_date: $('Split taps').item.json.run_date, action: $('Split taps').item.json.plan_action, by: $('Split taps').item.json.by }) }}",
+        "options": {
+          "timeout": 1800000
+        }
+      },
+      "id": "plandecide",
+      "name": "Gateway: plan decide",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1328,
+        -304
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Split taps').item.json.chat_id }}",
+        "text": "={{ $json.summary }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "reply_to_message_id": "={{ $('Split taps').item.json.message_id }}"
+        }
+      },
+      "id": "planresult",
+      "name": "Telegram: plan result",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        -304
+      ],
+      "webhookId": "c59108aa-7e23-4875-b49d-088c4f1ebfcf",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "msgs",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.message_count }}",
+              "rightValue": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "anymsg",
+      "name": "Any messages?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "messages",
+        "options": {}
+      },
+      "id": "splitmsg",
+      "name": "Split messages",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        672,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/chat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text, chat_id: $json.chat_id }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "chat",
+      "name": "Gateway: chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        272
+      ]
+    }
+  ],
+  "connections": {
+    "Gateway: new button taps": {
+      "main": [
+        [
+          {
+            "node": "Any taps?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Any messages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any taps?": {
+      "main": [
+        [
+          {
+            "node": "Split taps",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Split taps": {
+      "main": [
+        [
+          {
+            "node": "Whole plan?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: record decision": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Gateway: publish",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rejected line",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: publish": {
+      "main": [
+        [
+          {
+            "node": "Explain publish result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explain publish result": {
+      "main": [
+        [
+          {
+            "node": "Telegram: answer tap",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram: confirm in chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejected line": {
+      "main": [
+        [
+          {
+            "node": "Telegram: answer tap",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram: confirm in chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whole plan?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: ack plan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gateway: record decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: ack plan": {
+      "main": [
+        [
+          {
+            "node": "Gateway: plan decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: plan decide": {
+      "main": [
+        [
+          {
+            "node": "Telegram: plan result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any messages?": {
+      "main": [
+        [
+          {
+            "node": "Split messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Split messages": {
+      "main": [
+        [
+          {
+            "node": "Gateway: chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 30s (long poll)": {
+      "main": [
+        [
+          {
+            "node": "Gateway: new button taps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "683IFHjoY7k7ZHKH",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "binaryMode": "separate"
+  },
+  "staticData": {
+    "node:Every 10s": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    },
+    "node:Every 20s": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    },
+    "node:Every 30s (long poll)": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "b3df24f6-8ac9-4206-97f6-11f1f5dae16c",
+  "activeVersionId": "b3df24f6-8ac9-4206-97f6-11f1f5dae16c",
+  "versionCounter": 22,
+  "triggerCount": 1,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

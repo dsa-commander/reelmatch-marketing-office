@@ -1,0 +1,141 @@
+{
+  "updatedAt": "2026-10-13T09:05:25.000Z",
+  "createdAt": "2026-09-25T13:18:42.666Z",
+  "id": "RMCIDSWEEP00001",
+  "name": "[RMMKT] RM \u00b7 7 Content ID sweep",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 7 \u2014 Content ID sweep\n\n**Starts:** daily 07:20, or *Run on demand*.\n\nUploads go up **private with a scheduled public time**, which leaves a window to catch a problem\nbefore anyone sees it. This checks every scheduled-but-unpublished video for a Content ID block and\nalerts with the title, the regions and the deadline.\n\nWhy it exists: one claimed trailer (Neagley, 25 Sep) blocked an entire 5-film countdown in 249\nregions, and YouTube says nothing \u2014 the video simply becomes invisible.",
+        "height": 260,
+        "width": 460,
+        "color": 5
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -40
+      ]
+    },
+    {
+      "id": "cron",
+      "name": "Daily 07:20",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "20 7 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "manual",
+      "name": "Run on demand",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        180
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "sweep",
+      "name": "Gateway: check Content ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        80
+      ],
+      "parameters": {
+        "url": "http://host.docker.internal:8787/youtube/check-blocks",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Daily 07:20": {
+      "main": [
+        [
+          {
+            "node": "Gateway: check Content ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run on demand": {
+      "main": [
+        [
+          {
+            "node": "Gateway: check Content ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "node:Daily 07:20": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "91412e9d-f778-4883-a231-947f4d533b12",
+  "activeVersionId": "91412e9d-f778-4883-a231-947f4d533b12",
+  "versionCounter": 5,
+  "triggerCount": 1,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

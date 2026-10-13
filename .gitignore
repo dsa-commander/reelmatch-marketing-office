@@ -1,0 +1,4 @@
+# nothing from the project root belongs here
+.env
+*.env
+.DS_Store

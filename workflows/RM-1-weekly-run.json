@@ -1,0 +1,506 @@
+{
+  "updatedAt": "2026-10-13T09:05:16.000Z",
+  "createdAt": "2026-09-18T14:13:41.507Z",
+  "id": "Jj8lM4Sf11INtf8V",
+  "name": "[RMMKT] RM \u00b7 1 Generate & request approval",
+  "description": "",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 1 \u2014 the weekly run\n\n**Starts:** Monday 08:00, or *Run on demand*.\n\n1. **Flush held cards** \u2014 anything kept back from a non-decision day\n2. **Weekly report** \u2014 last week's views, what published, what it cost\n3. **Gateway: run weekly plan** \u2014 runs the Marketing Manager and its agents on the host (~20 min).\n   n8n is in Docker and cannot reach the host, so every call goes through the gateway on :8787\n4. **Draft valid?** \u2014 an invalid draft messages me *instead of* sending a stack of bad cards\n5. **Approval cards** \u2014 one per item, each carrying its proposed slot\n6. **Run log** \u2014 a row in a Google Sheet, so something outside this Mac knows Monday happened\n\n**Nothing here publishes.** The cards do, and only after a tap recorded in `logs/decisions.jsonl`.\n\n**On failure:** RM \u00b7 0 alerts. Gateway calls retry 3\u00d7 / 5s, so a restart is invisible.",
+        "height": 390,
+        "width": 460,
+        "color": 4
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -616,
+        -472
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "cron",
+      "name": "Monday 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "manual-trigger",
+      "name": "Run on demand",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        96
+      ],
+      "notes": "Headless runs: docker exec reelmatch-n8n n8n execute --id=Jj8lM4Sf11INtf8V"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/run/weekly",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "instructions",
+              "value": "Follow the weekly rotation and live channels in knowledge/CHANNELS.md. Reuse recent renders where they exist and re-thumb them with this week's hook. Lead with ReelMatch audience data."
+            }
+          ]
+        },
+        "options": {
+          "timeout": 5400000
+        }
+      },
+      "id": "run",
+      "name": "Gateway: run weekly plan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        0
+      ],
+      "notes": "Timeout is 90 min: a 5-title long-form render measured 62 min. Don't lower it.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ok",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gate",
+      "name": "Draft valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.RM_TELEGRAM_CHAT_ID }}",
+        "text": "=\u26a0\ufe0f *Weekly run produced an INVALID draft \u2014 nothing sent for approval.*\n\n{{ $json.validation.errors.join('\\n\u2022 ') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "invalid",
+      "name": "Telegram: invalid draft",
+      "webhookId": "a8fa9cb5-b2b0-4870-b422-3337545f198b",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.RM_TELEGRAM_CHAT_ID }}",
+        "text": "=\ud83d\udccb *ReelMatch weekly plan \u2014 {{ $json.run_date }}*\n\n{{ $json.brief.slice(0, 700) }}\n\n_{{ $json.items.length }} item(s) below \u00b7 run cost ${{ $json.cost_usd }} \u00b7 {{ $json.seconds }}s_",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "brief",
+      "name": "Telegram: the brief",
+      "webhookId": "9d210979-9fcc-4593-b70a-63d352283d6c",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        -384
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8787/report/weekly",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "report",
+      "name": "Gateway: weekly report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "position": [
+        448,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Last week's numbers first, so the plan that follows is read in context. Non-fatal if analytics are down."
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.RM_TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.text || '\ud83d\udcca Weekly report unavailable (analytics down) \u2014 continuing with the plan.' }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "report-tg",
+      "name": "Telegram: weekly report",
+      "webhookId": "91b7b710-8102-4105-9e46-dfd84308eef6",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/telegram/flush",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "flush",
+      "name": "Gateway: flush held cards",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Cards requested on non-decision days were held; deliver them now.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/telegram/plan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_date: $json.run_date }) }}",
+        "options": {}
+      },
+      "id": "plancard",
+      "name": "Gateway: send plan card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        -192
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1J97kqwV5JhWrjcI07emy-AsvBxkNX6D90YsedHEkgpQ",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "runs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "runlog",
+      "name": "Sheet: log the run",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1344,
+        192
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "kFOqb95vzMf0pnOs",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"run_date\": \"{{ $json.run_date }}\",\n  \"ok\": {{ $json.ok }},\n  \"items\": {{ ($json.items || []).length }},\n  \"cost_usd\": {{ $json.cost_usd }},\n  \"seconds\": {{ $json.seconds }},\n  \"types\": {{ JSON.stringify(($json.items || []).map(i => i.type).join(\", \")) }},\n  \"errors\": {{ JSON.stringify((($json.validation || {}).errors || []).join(\"; \").slice(0, 300)) }},\n  \"reported_at\": \"{{ $now.toISO() }}\"\n}",
+        "options": {}
+      },
+      "id": "runlogrow",
+      "name": "Row: run log",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1120,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Component Status\n![Status](https://img.shields.io/badge/STATUS-LIVE-brightgreen?style=for-the-badge)\n![Status](https://img.shields.io/badge/STATUS-IN_PROGRESS-yellow?style=for-the-badge)\n![Status](https://img.shields.io/badge/STATUS-ERROR-red?style=for-the-badge)\n![Status](https://img.shields.io/badge/STATUS-DORMANT-inactive?style=for-the-badge)\n",
+        "height": 272,
+        "color": "#F1E9E9"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        -432
+      ],
+      "id": "9f966b77-7508-4c4b-9724-ccfb8268395e",
+      "name": "Sticky Note"
+    }
+  ],
+  "connections": {
+    "Monday 08:00": {
+      "main": [
+        [
+          {
+            "node": "Gateway: flush held cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: run weekly plan": {
+      "main": [
+        [
+          {
+            "node": "Draft valid?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Row: run log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft valid?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: the brief",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gateway: send plan card",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram: invalid draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run on demand": {
+      "main": [
+        [
+          {
+            "node": "Gateway: flush held cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: weekly report": {
+      "main": [
+        [
+          {
+            "node": "Telegram: weekly report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram: weekly report": {
+      "main": [
+        [
+          {
+            "node": "Gateway: run weekly plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: flush held cards": {
+      "main": [
+        [
+          {
+            "node": "Gateway: weekly report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: run log": {
+      "main": [
+        [
+          {
+            "node": "Sheet: log the run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "683IFHjoY7k7ZHKH",
+    "binaryMode": "separate"
+  },
+  "staticData": {
+    "node:Monday 08:00": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "3a0cdd12-11b3-4262-a6b4-ca97130d1a92",
+  "activeVersionId": "3a0cdd12-11b3-4262-a6b4-ca97130d1a92",
+  "versionCounter": 34,
+  "triggerCount": 1,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

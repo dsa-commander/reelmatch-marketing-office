@@ -1,0 +1,169 @@
+{
+  "updatedAt": "2026-10-13T12:27:52.000Z",
+  "createdAt": "2026-09-18T14:13:41.504Z",
+  "id": "683IFHjoY7k7ZHKH",
+  "name": "[RMMKT] RM \u00b7 0 Error alert",
+  "description": "",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 0 \u2014 every failure lands here\n\n**Starts:** set as the *Error Workflow* on the other office workflows.\n\n- **Classify failure** \u2014 tells an expected rejection (\"no recorded human approval\" \u2014 the gate working)\n  from a real fault, and attaches what it means\n- **Gateway: alert (deduped)** \u2014 the same workflow+node+error inside an hour becomes one message, not\n  forty, and `/mute 4` silences them for a while\n- **Telegram: alert** \u2014 the *fallback*, used only when the gateway is unreachable. That failure is\n  precisely when an alert matters most, so it must not depend on the gateway.",
+        "height": 260,
+        "width": 460,
+        "color": 5
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "err-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# n8n's Python task runner exposes `_items` (this node runs once for all items), NOT the JS\n# helpers: there is no `$('Other Node')`, and the sandbox sets N8N_RUNNERS_STDLIB_ALLOW=\"\" so even\n# `import re` fails with \"Security violations detected\". Both nodes below are therefore written\n# with plain built-ins and read only their own input. See n8n/README.md.\n\n# Classify the failure so the alert says what KIND of problem it is. Rejections the system made on\n# purpose (bad token, no approval, publishing disabled) are worth knowing about but are not outages \u2014\n# they get a different icon and a one-line \"why\".\n\ndef esc(s):\n    \"\"\"Telegram legacy Markdown: an unpaired _ * [ or ` in a value aborts the whole message\n    (\"can't parse entities\"). Error text is full of them \u2014 tmdb_id, file paths, code.\"\"\"\n    out = str(s)\n    for ch in (\"_\", \"*\", \"[\", \"]\", \"`\"):\n        out = out.replace(ch, \"\\\\\" + ch)\n    return out\n\n\nj = _items[0][\"json\"]\nwf = (j.get(\"workflow\") or {}).get(\"name\") or \"unknown workflow\"\nex = j.get(\"execution\") or {}\nnode = ex.get(\"lastNodeExecuted\") or \"unknown node\"\nmsg = ((ex.get(\"error\") or {}).get(\"message\") or \"unknown error\")[:300]\nurl = ex.get(\"url\") or \"\"\n\n# (any one of these phrases) -> why it is not an outage\nEXPECTED = [\n    ((\"bad token\",),\n     \"a caller sent the wrong gateway token \u2014 the request was refused (correct)\"),\n    ((\"no recorded human approval\",),\n     \"publish was attempted without an approval tap \u2014 the gate held (correct)\"),\n    ((\"publishing is disabled\",),\n     \"STUDIO_ALLOW_PUBLISH is off \u2014 nothing was published (by design)\"),\n    ((\"econnrefused\", \"refused the connection\"),\n     \"the gateway was unreachable \u2014 usually a restart; check ./scripts/office.sh status\"),\n    ((\"not active and cannot be executed\",),\n     \"a sub-workflow is inactive \u2014 activate it in n8n\"),\n    ((\"nothing was queued\",),\n     \"the Instagram enqueue refused the request \u2014 see the node that stopped\"),\n]\n\nlow = msg.lower()\nwhy = next((w for phrases, w in EXPECTED if any(p in low for p in phrases)), None)\n\nkind = \"\\u26a0\\ufe0f Expected rejection\" if why else \"\\U0001f6a8 Workflow failed\"\ntext = (kind + \" \u2014 *ReelMatch Marketing Office*\\n\\n\"\n        + \"*Workflow:* \" + esc(wf) + \"\\n*Node:* \" + esc(node)\n        + \"\\n*Error:* \" + esc(msg))\nif why:\n    text += \"\\n*Why:* \" + esc(why)\nif url:\n    text += \"\\n\\n[Open execution](\" + url + \")\"\n\n# text/ for the direct fallback; the rest for /alert, which dedupes and adds the remedy\nreturn [{\"json\": {\"text\": text, \"workflow\": wf, \"node\": node, \"message\": msg, \"url\": url}}]\n"
+      },
+      "id": "classify",
+      "name": "Classify failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.RM_TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "err-notify",
+      "name": "Telegram: alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        0
+      ],
+      "webhookId": "aafd433d-7b3b-46cc-bd10-0b60ac50b1ce",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZxTo3DFPesAMZJcu",
+          "name": "ReelMatch bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/alert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workflow: $json.workflow, node: $json.node, message: $json.message, url: $json.url }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "gwalert",
+      "name": "Gateway: alert (deduped)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        -40
+      ],
+      "onError": "continueErrorOutput",
+      "notesInFlow": true,
+      "notes": "falls back to a direct Telegram message",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Classify failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify failure": {
+      "main": [
+        [
+          {
+            "node": "Gateway: alert (deduped)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: alert (deduped)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Telegram: alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "ce3fd1ba-fafe-4b3f-ae8c-e8d4e33b4f76",
+  "activeVersionId": "ce3fd1ba-fafe-4b3f-ae8c-e8d4e33b4f76",
+  "versionCounter": 12,
+  "triggerCount": 0,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}

@@ -1,0 +1,269 @@
+{
+  "updatedAt": "2026-10-13T09:05:21.000Z",
+  "createdAt": "2026-09-21T14:15:27.709Z",
+  "id": "TXi1bQCxgJ0kcCXQ",
+  "name": "[RMMKT] RM \u00b7 4 Community replies",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RM \u00b7 4 \u2014 YouTube comment replies\n\n**Starts:** Mon/Wed/Fri 10:00, or *Run on demand*.\n\nThe community agent drafts a reply to each unanswered comment; every draft comes to Telegram as its\nown card. **Replies post as the channel, so none is sent without a tap.**\n\nQuiet days are normal \u2014 no new comments means no cards, not a failure.",
+        "height": 260,
+        "width": 460,
+        "color": 4
+      },
+      "id": "overview-note",
+      "name": "What this workflow does",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -104
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * 1,3,5"
+            }
+          ]
+        }
+      },
+      "id": "cron",
+      "name": "Mon/Wed/Fri 10:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Decision days only. hours=96 covers Fri\u2192Mon; nothing is missed."
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "manual",
+      "name": "Run on demand",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/run/community",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ hours: 96 }) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "run",
+      "name": "Gateway: draft replies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "any",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ ($json.items || []).length }}",
+              "rightValue": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "any",
+      "name": "Any drafts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        0
+      ],
+      "notes": "Quiet when there's nothing to reply to \u2014 no message at all."
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "options": {}
+      },
+      "id": "split",
+      "name": "One card per reply",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8787/telegram/card",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Gateway-Token",
+              "value": "={{ $env.RM_GATEWAY_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run_date: $('Gateway: draft replies').first().json.run_date, item_id: $json.id }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "card",
+      "name": "Gateway: send reply card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        -64
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "connections": {
+    "Run on demand": {
+      "main": [
+        [
+          {
+            "node": "Gateway: draft replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gateway: draft replies": {
+      "main": [
+        [
+          {
+            "node": "Any drafts?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any drafts?": {
+      "main": [
+        [
+          {
+            "node": "One card per reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "One card per reply": {
+      "main": [
+        [
+          {
+            "node": "Gateway: send reply card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mon/Wed/Fri 10:00": {
+      "main": [
+        [
+          {
+            "node": "Gateway: draft replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "683IFHjoY7k7ZHKH",
+    "binaryMode": "separate"
+  },
+  "staticData": {
+    "node:10:00 & 18:00 daily": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    },
+    "node:Mon/Wed/Fri 10:00": {
+      "recurrenceRules": [
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "6ea76c80-c0aa-41e2-831d-a24802dd5e0f",
+  "activeVersionId": "6ea76c80-c0aa-41e2-831d-a24802dd5e0f",
+  "versionCounter": 6,
+  "triggerCount": 1,
+  "tags": [
+    {
+      "updatedAt": "2026-09-28T09:32:09.882Z",
+      "createdAt": "2026-09-28T09:32:09.882Z",
+      "id": "eRHZW2bktYuCwBys",
+      "name": "RMMKT"
+    }
+  ]
+}
