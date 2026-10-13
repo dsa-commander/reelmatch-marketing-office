@@ -43,9 +43,15 @@ The clearest evidence is a single item followed the whole way. Each step can be 
 | 16:17 | An agent proposes a carousel; the brand guardian returns APPROVE. The card arrives on my phone. | [the card](screenshots/telegram-carousel-card-2026-10-13.png) |
 | 16:20 | I tap Approve. Two rows are appended: `approve`, then `queued_carousel` with `scheduled_at 18:00`. | [the ledger](logs/decisions.jsonl) |
 | 18:00 | The carousel workflow asks the gateway whether anything is due. This time it is. | [the workflow](screenshots/n8n-rm9-publish-carousel.png) |
-| 18:01 | Seven slides posted as one carousel; the permalink written back. | [the post](https://www.instagram.com/p/DecMGbMin9c/) |
+| 18:01 | Seven slides posted as one carousel; the permalink written back, and a confirmation sent. | [the confirmation](screenshots/telegram-carousel-posted.png) · [the live post](https://www.instagram.com/p/DecMGbMin9c/) |
+
+The card, with the guardian's verdict and the agent's stated reason for the angle:
 
 ![The approval card](screenshots/telegram-carousel-card-2026-10-13.png)
+
+...and the post it became, an hour later:
+
+![The published carousel](screenshots/instagram-carousel-post.png)
 
 ## Architecture
 
@@ -130,6 +136,13 @@ Their actual instructions: [brand-guardian.md](agents/brand-guardian.md) · [com
 | 2026-09-22 | [Would you swipe right on Resident Evil? 🍿](https://youtu.be/WJbvMeMR24s) | 2026-09-22 12:28 |
 | 2026-09-21 | [Nobody warned me about Resident Evil 😱 #Shorts](https://youtu.be/FgmM5O1p9OM) | — |
 
+![Scheduled Shorts in YouTube Studio](screenshots/youtube-studio-scheduled-shorts.png)
+
+Those five are the first published with the **planner's own titles**. Until 13 October the studio's
+generated fallback was uploaded instead — the planner's title lived in the draft and never reached
+YouTube, so the decision ledger and the channel disagreed about what had been posted. The title is
+now written into the upload metadata at publish time and the swap is recorded.
+
 ### Instagram — 13 posts
 
 | Date | Post | Type |
@@ -149,6 +162,28 @@ Their actual instructions: [brand-guardian.md](agents/brand-guardian.md) · [com
 | 2026-09-28 | [An FBI agent partners with a mafia hitman in 1960s Mississ](https://www.instagram.com/p/Dd0hOzooFA2/) | image |
 
 ![The Instagram grid](screenshots/instagram-profile-grid.png)
+
+## Running it
+
+The whole human interface is a phone. These are real sessions, not mock-ups.
+
+| | |
+|---|---|
+| ![/status](screenshots/telegram-status-command.png) | ![/approval](screenshots/telegram-approval-command.png) |
+
+`/status` checks every service **and** whether anything has actually *reached* a channel recently —
+the last two lines. That check exists because Instagram stopped posting for eleven days while every
+service reported healthy. `/approval` lists what is still waiting on a tap, with anything past its
+proposed slot marked.
+
+The office also has a literal one. Each character is a process the orchestrator actually started,
+traced from its own transcript:
+
+![The agents at work](screenshots/pixel-agents-office.png)
+
+And the Instagram queue the publisher reads, one post a day, oldest first:
+
+![The content queue](screenshots/n8n-instagram-queue.png)
 
 ## Results, honestly
 
@@ -188,6 +223,7 @@ which failed the first time they were run.
 workflows/     11 n8n exports, importable into any instance
 agents/        the agent prompts, the rulebooks, CLAUDE.md, EVALUATION.md, MODEL_ROUTING.md
 logs/          decisions.jsonl — every approval, rejection and publish (98 rows)
+               evaluate-output.txt — the test suite's own output, re-runnable
 screenshots/   the running system: canvases, execution history, Telegram, YouTube, Instagram
 ```
 

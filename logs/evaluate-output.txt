@@ -1,0 +1,20 @@
+$ .venv/bin/python -m tests.evaluate
+
+
+ReelMatch Marketing Office — evaluation (98 decisions, 84 agent runs)
+
+  approvals            49
+  rejections           5
+  published            27
+  weekly drafts        9   latest 2026-10-13
+  outreach domains     14 (14 unique)
+  model usage          $27.29   billed $0.00
+
+  ✅ S1  no publish without a recorded approval       0 orphan(s) of 27 publishes
+  ✅ S3  no domain pitched twice                      0 duplicate(s)
+  ✅ S4  local agents meet their research contract    54/54 met
+
+All counted criteria pass — see docs/EVALUATION.md for the rest.
+
+
+(exit code 0)
