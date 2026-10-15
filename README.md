@@ -14,8 +14,8 @@ system, and links to every post it has published to live accounts.
 | **0** | published without a recorded approval |
 | **98** | rows in the decision ledger |
 
-📺 **[5-minute overview](https://pub-cfba2efc4aa74248b246c62c9cbd6a37.r2.dev/presentation/reelmatch-marketing-office-5min.mp4)** ·
-**[15-minute deep dive](https://pub-cfba2efc4aa74248b246c62c9cbd6a37.r2.dev/presentation/reelmatch-marketing-office-full.mp4)**
+📺 **[5-minute overview](https://pub-cfba2efc4aa74248b246c62c9cbd6a37.r2.dev/presentation/reelmatch-marketing-office-5min-elevenlabs.mp4)** ·
+**[15-minute deep dive](https://pub-cfba2efc4aa74248b246c62c9cbd6a37.r2.dev/presentation/reelmatch-marketing-office-full-elevenlabs.mp4)**
 
 ---
 
